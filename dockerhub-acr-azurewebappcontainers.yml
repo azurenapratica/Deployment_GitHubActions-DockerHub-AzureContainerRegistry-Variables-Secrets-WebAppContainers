@@ -1,0 +1,54 @@
+name: Build de imagem Docker + Docker Hub + Azure Container Registry + Azure Web App for Containers
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+
+  build:
+    env:
+      NOME_IMAGEM: apicontagem-preview7
+      NOME_WEBAPP: anpcontainer
+      IMAGEM_DOCKERHUB: ${{ secrets.DOCKER_USERNAME }}/$NOME_IMAGEM
+      IMAGEM_AZURE: ${{ secrets.AZURE_CONTAINER_REGISTRY_SERVER }}/$NOME_IMAGEM
+      
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Docker Login - Docker Hub
+      uses: Azure/docker-login@v1
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Login no Azure Container Registry
+      uses: Azure/docker-login@v1
+      with:
+        username: ${{ secrets.AZURE_CONTAINER_REGISTRY_USERNAME }}
+        password: ${{ secrets.AZURE_CONTAINER_REGISTRY_PASSWORD }}
+        login-server: ${{ secrets.AZURE_CONTAINER_REGISTRY_SERVER }}
+
+    - name: Build e Push no Docker Hub + Azure Container Registry
+      run: |
+        cd ./APIContagem
+        docker build . --file Dockerfile --tag ${{ env.IMAGEM_DOCKERHUB }}:latest
+        docker tag ${{ env.IMAGEM_DOCKERHUB }}:latest ${{ env.IMAGEM_DOCKERHUB }}:$GITHUB_RUN_NUMBER
+        docker push ${{ env.IMAGEM_DOCKERHUB }}
+        docker tag ${{ env.IMAGEM_DOCKERHUB }}:latest ${{ env.IMAGEM_AZURE }}:latest
+        docker tag ${{ env.IMAGEM_AZURE }}:latest ${{ env.IMAGEM_AZURE }}:$GITHUB_RUN_NUMBER
+        docker push ${{ env.IMAGEM_AZURE }}
+    - name: Azure Login - Conectando com Credenciais no Azure
+      uses: Azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+       
+    - name: Azure WebApp - Deployment da Aplicacao
+      uses: Azure/webapps-deploy@v2
+      with:
+        app-name: ${{ env.NOME_WEBAPP }}
+        images: 'anpgithubactions.azurecr.io/apicontagem-preview7:latest'
